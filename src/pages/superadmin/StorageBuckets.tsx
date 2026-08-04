@@ -24,6 +24,8 @@ import {
   Users,
   Share2,
   CloudUpload,
+  CheckCircle2,
+  PlugZap,
   Edit,
   Trash2,
   Eye,
@@ -31,7 +33,18 @@ import {
 import {
   storageBucketService,
   type StorageBucket,
+  type CreateBucketPayload,
 } from "@/services/storage-bucket-service";
+import {
+  E2E_DEFAULT_ENDPOINT,
+  E2E_DEFAULT_REGION,
+  E2E_ENDPOINT_PRESETS,
+  STORAGE_TYPE_META,
+  STORAGE_TYPE_OPTIONS,
+  getStorageTypeBadgeClass,
+  getStorageTypeShortLabel,
+  type StorageType,
+} from "@/constants/storage";
 import { tenantService } from "@/services/tenant-service";
 import { showToast } from "@/utils/toast";
 import { StorageBucketDetail } from "./StorageBucketDetail";
@@ -46,6 +59,50 @@ interface BucketFormProps {
   bucket?: StorageBucket | null;
 }
 
+/**
+ * Mirrors the backend's validateBucketName() (src/utils/object-storage.js) so
+ * bad bucket names are caught before a round-trip. Returns null when valid.
+ */
+const validateBucketName = (name: string): string | null => {
+  const value = name.trim();
+  if (value.length < 3 || value.length > 63) {
+    return "Bucket name must be between 3 and 63 characters";
+  }
+  if (!/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/.test(value)) {
+    return "Bucket name may only contain lowercase letters, numbers, hyphens and dots, and must start and end with a letter or number";
+  }
+  if (value.includes("..")) {
+    return "Bucket name must not contain consecutive dots";
+  }
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) {
+    return "Bucket name must not be formatted as an IP address";
+  }
+  return null;
+};
+
+/** Pull the API's error.message out of an axios failure without widening to `any`. */
+const extractApiErrorMessage = (err: unknown): string | undefined => {
+  const message = (err as {
+    response?: { data?: { error?: { message?: string } } };
+  })?.response?.data?.error?.message;
+  return typeof message === "string" ? message : undefined;
+};
+
+/** Provider secrets — blank means "keep the stored value", so they are omitted. */
+const SECRET_FIELDS = [
+  "azure_sas_token",
+  "s3_secret_access_key",
+  "gcs_service_account_key",
+  "e2e_secret_key",
+] as const;
+
+const stripBlankSecrets = <T extends Record<string, unknown>>(payload: T): T => {
+  for (const field of SECRET_FIELDS) {
+    if (!payload[field]) delete payload[field];
+  }
+  return payload;
+};
+
 const getBucketSchema = (isEdit: boolean) =>
   z
     .object({
@@ -54,7 +111,7 @@ const getBucketSchema = (isEdit: boolean) =>
         .min(1, "Bucket name is required")
         .max(255, "Maximum 255 characters allowed"),
       description: z.string().optional().or(z.literal("")),
-      storage_type: z.enum(["azure", "local", "s3", "gcp"], {
+      storage_type: z.enum(["azure", "local", "s3", "gcp", "e2e"], {
         error: "Storage type is required",
       }),
       // Azure
@@ -71,6 +128,13 @@ const getBucketSchema = (isEdit: boolean) =>
       gcs_bucket: z.string().optional().or(z.literal("")),
       gcs_project_id: z.string().optional().or(z.literal("")),
       gcs_service_account_key: z.string().optional().or(z.literal("")),
+      // E2E Networks Object Storage (EOS)
+      e2e_bucket: z.string().optional().or(z.literal("")),
+      e2e_endpoint: z.string().optional().or(z.literal("")),
+      e2e_region: z.string().optional().or(z.literal("")),
+      e2e_access_key: z.string().optional().or(z.literal("")),
+      e2e_secret_key: z.string().optional().or(z.literal("")),
+      e2e_force_path_style: z.boolean().optional(),
     })
     .superRefine((data, ctx) => {
       if (data.storage_type === "azure") {
@@ -116,6 +180,29 @@ const getBucketSchema = (isEdit: boolean) =>
           ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gcs_service_account_key"], message: "Service Account Key JSON is required for GCP" });
         }
       }
+      if (data.storage_type === "e2e") {
+        if (!data.e2e_bucket || data.e2e_bucket.trim() === "") {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["e2e_bucket"], message: "Bucket name is required for E2E Object Storage" });
+        } else {
+          const bucketError = validateBucketName(data.e2e_bucket);
+          if (bucketError) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["e2e_bucket"], message: bucketError });
+          }
+        }
+        if (!data.e2e_endpoint || data.e2e_endpoint.trim() === "") {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["e2e_endpoint"], message: "S3 endpoint is required for E2E Object Storage" });
+        } else {
+          try { new URL(data.e2e_endpoint); } catch {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["e2e_endpoint"], message: "Please enter a valid endpoint URL (e.g. https://objectstore.e2enetworks.net)" });
+          }
+        }
+        if (!data.e2e_access_key || data.e2e_access_key.trim() === "") {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["e2e_access_key"], message: "Access Key is required for E2E Object Storage" });
+        }
+        if (!isEdit && (!data.e2e_secret_key || data.e2e_secret_key.trim() === "")) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["e2e_secret_key"], message: "Secret Key is required for E2E Object Storage" });
+        }
+      }
     });
 
 type BucketFormData = z.infer<ReturnType<typeof getBucketSchema>>;
@@ -123,6 +210,10 @@ type BucketFormData = z.infer<ReturnType<typeof getBucketSchema>>;
 const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps) => {
   const isEdit = !!bucket;
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<
+    { ok: true; target: string } | { ok: false; message: string } | null
+  >(null);
 
   const bucketSchema = getBucketSchema(isEdit);
 
@@ -133,6 +224,8 @@ const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps
     watch,
     reset,
     clearErrors,
+    getValues,
+    trigger,
     formState: { errors },
   } = useForm<BucketFormData>({
     resolver: zodResolver(bucketSchema) as any,
@@ -151,10 +244,28 @@ const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps
       gcs_bucket: "",
       gcs_project_id: "",
       gcs_service_account_key: "",
+      e2e_bucket: "",
+      e2e_endpoint: E2E_DEFAULT_ENDPOINT,
+      e2e_region: E2E_DEFAULT_REGION,
+      e2e_access_key: "",
+      e2e_secret_key: "",
+      e2e_force_path_style: true,
     },
   });
 
   const storageTypeValue = watch("storage_type");
+  const e2eEndpointValue = watch("e2e_endpoint");
+  const e2eForcePathStyle = watch("e2e_force_path_style");
+
+  // "Custom endpoint…" is sticky once chosen, so typing a value that happens to
+  // match a preset does not snap the dropdown back to that preset.
+  const [useCustomE2EEndpoint, setUseCustomE2EEndpoint] = useState(false);
+  const e2eEndpointPreset =
+    useCustomE2EEndpoint ||
+    (e2eEndpointValue &&
+      !E2E_ENDPOINT_PRESETS.some((p) => p.value === e2eEndpointValue))
+      ? "custom"
+      : e2eEndpointValue || E2E_DEFAULT_ENDPOINT;
 
   useEffect(() => {
     if (isOpen) {
@@ -174,7 +285,17 @@ const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps
           gcs_bucket: bucket.gcs_bucket || "",
           gcs_project_id: bucket.gcs_project_id || "",
           gcs_service_account_key: "",
+          e2e_bucket: bucket.e2e_bucket || "",
+          e2e_endpoint: bucket.e2e_endpoint || E2E_DEFAULT_ENDPOINT,
+          e2e_region: bucket.e2e_region || E2E_DEFAULT_REGION,
+          e2e_access_key: bucket.e2e_access_key || "",
+          e2e_secret_key: "",
+          e2e_force_path_style: bucket.e2e_force_path_style ?? true,
         });
+        setUseCustomE2EEndpoint(
+          !!bucket.e2e_endpoint &&
+            !E2E_ENDPOINT_PRESETS.some((p) => p.value === bucket.e2e_endpoint),
+        );
       } else {
         reset({
           name: "",
@@ -191,21 +312,56 @@ const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps
           gcs_bucket: "",
           gcs_project_id: "",
           gcs_service_account_key: "",
+          e2e_bucket: "",
+          e2e_endpoint: E2E_DEFAULT_ENDPOINT,
+          e2e_region: E2E_DEFAULT_REGION,
+          e2e_access_key: "",
+          e2e_secret_key: "",
+          e2e_force_path_style: true,
         });
+        setUseCustomE2EEndpoint(false);
       }
+      setTestResult(null);
       clearErrors();
     }
   }, [bucket, isOpen, reset, clearErrors]);
+
+  /**
+   * Probe the configured backend before saving. On an existing bucket the
+   * secret may be left blank — the backend then falls back to the stored value.
+   */
+  const handleTestConnection = async () => {
+    setTestResult(null);
+    // Validate first so missing fields surface as inline errors rather than as
+    // an opaque error from the storage SDK.
+    if (!(await trigger())) return;
+
+    const data = getValues();
+    setTesting(true);
+    try {
+      const payload = stripBlankSecrets({ ...data }) as CreateBucketPayload;
+      const result = bucket
+        ? await storageBucketService.testSavedConnection(bucket.id, payload)
+        : await storageBucketService.testConnection(payload);
+      setTestResult({ ok: true, target: result.target });
+    } catch (err: unknown) {
+      setTestResult({
+        ok: false,
+        message:
+          extractApiErrorMessage(err) ||
+          "Could not connect to the storage bucket",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const handleSubmitForm = async (data: BucketFormData) => {
     setSaving(true);
     try {
       if (isEdit && bucket) {
-        const payload = { ...data };
         // Don't send blank secrets on edit (means "don't change")
-        if (!payload.azure_sas_token) delete payload.azure_sas_token;
-        if (!payload.s3_secret_access_key) delete payload.s3_secret_access_key;
-        if (!payload.gcs_service_account_key) delete payload.gcs_service_account_key;
+        const payload = stripBlankSecrets({ ...data });
         await storageBucketService.update(bucket.id, payload as any);
         showToast.success("Bucket updated successfully");
       } else {
@@ -252,14 +408,12 @@ const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps
           label="Storage Type"
           required
           placeholder="Select Storage Type"
-          options={[
-            { value: "azure", label: "Azure Blob Storage" },
-            { value: "s3",    label: "Amazon S3" },
-            { value: "gcp",   label: "Google Cloud Storage (GCS)" },
-            { value: "local", label: "Local Filesystem" },
-          ]}
+          options={STORAGE_TYPE_OPTIONS}
           value={storageTypeValue}
-          onValueChange={(val) => setValue("storage_type", val as "azure" | "local" | "s3" | "gcp", { shouldValidate: true })}
+          onValueChange={(val) => {
+            setValue("storage_type", val as StorageType, { shouldValidate: true });
+            setTestResult(null);
+          }}
           error={errors.storage_type?.message}
         />
 
@@ -388,18 +542,158 @@ const BucketFormModal = ({ isOpen, onClose, onSuccess, bucket }: BucketFormProps
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+        {/* E2E Networks Object Storage (EOS / Vyoma) Fields */}
+        {storageTypeValue === "e2e" && (
+          <div className={`space-y-3 p-4 border rounded-lg ${STORAGE_TYPE_META.e2e.panelClass}`}>
+            <p className={`text-xs font-semibold uppercase tracking-wider ${STORAGE_TYPE_META.e2e.panelHeadingClass}`}>
+              E2E Networks Object Storage (EOS) Configuration
+            </p>
+            <p className="text-xs text-gray-600">
+              EOS is S3-compatible. Create the bucket and Access/Secret keys in
+              E2E MyAccount → Object Storage, then paste them here.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                label="Bucket Name"
+                required
+                placeholder="e.g. qassure-eos-files"
+                error={errors.e2e_bucket?.message}
+                helperText="Lowercase letters, numbers, hyphens and dots (3–63 chars)"
+                {...register("e2e_bucket")}
+              />
+              <FormField
+                label="Signing Region"
+                placeholder={E2E_DEFAULT_REGION}
+                error={errors.e2e_region?.message}
+                helperText="EOS ignores AWS regions — used only for SigV4 signing"
+                {...register("e2e_region")}
+              />
+            </div>
+
+            <FormSelect
+              label="S3 Endpoint"
+              required
+              placeholder="Select an endpoint"
+              options={E2E_ENDPOINT_PRESETS}
+              value={e2eEndpointPreset}
+              onValueChange={(val) => {
+                if (val === "custom") {
+                  setUseCustomE2EEndpoint(true);
+                  setValue("e2e_endpoint", "", { shouldValidate: false });
+                } else {
+                  setUseCustomE2EEndpoint(false);
+                  setValue("e2e_endpoint", val, { shouldValidate: true });
+                }
+              }}
+            />
+
+            {e2eEndpointPreset === "custom" && (
+              <FormField
+                label="Custom Endpoint URL"
+                required
+                type="url"
+                placeholder="https://objectstore.e2enetworks.net"
+                error={errors.e2e_endpoint?.message}
+                {...register("e2e_endpoint")}
+              />
+            )}
+
+            {e2eEndpointPreset !== "custom" && errors.e2e_endpoint?.message && (
+              <p className="text-xs text-red-600">{errors.e2e_endpoint.message}</p>
+            )}
+
+            <FormField
+              label="Access Key"
+              required
+              placeholder="EOS access key from MyAccount"
+              error={errors.e2e_access_key?.message}
+              {...register("e2e_access_key")}
+            />
+
+            <FormField
+              label={`Secret Key${isEdit ? " (leave blank to keep existing)" : ""}`}
+              type="password"
+              required={!isEdit}
+              placeholder={isEdit ? "••••••••••••••••" : "EOS secret key from MyAccount"}
+              error={errors.e2e_secret_key?.message}
+              helperText="Stored encrypted (AES-256-GCM). Never shown again in plaintext."
+              {...register("e2e_secret_key")}
+            />
+
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                checked={e2eForcePathStyle ?? true}
+                onChange={(e) => setValue("e2e_force_path_style", e.target.checked)}
+              />
+              <span className="text-xs text-gray-700">
+                <span className="font-medium">Use path-style addressing</span>
+                <span className="block text-gray-500">
+                  Recommended. Requests go to{" "}
+                  <code className="font-mono">endpoint/bucket/key</code>. Uncheck
+                  for DNS-style (<code className="font-mono">bucket.endpoint/key</code>),
+                  which needs the bucket to resolve as a sub-domain.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* Connection test result */}
+        {testResult && (
+          <div
+            className={`flex items-start gap-2 p-3 rounded-lg border text-sm ${
+              testResult.ok
+                ? "bg-green-50 border-green-200 text-green-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}
           >
-            Cancel
-          </button>
-          <PrimaryButton type="submit" disabled={saving}>
-            {saving ? "Saving..." : isEdit ? "Update Bucket" : "Create Bucket"}
-          </PrimaryButton>
+            {testResult.ok ? (
+              <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0 text-green-600" />
+            ) : (
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600" />
+            )}
+            {testResult.ok ? (
+              <span>
+                Connection successful —{" "}
+                <span className="font-mono text-xs break-all">{testResult.target}</span>
+              </span>
+            ) : (
+              <span className="break-words">{testResult.message}</span>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+          {storageTypeValue !== "local" ? (
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={testing || saving}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-[#112868] border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <PlugZap className={`w-4 h-4 ${testing ? "animate-pulse" : ""}`} />
+              {testing ? "Testing..." : "Test Connection"}
+            </button>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <PrimaryButton type="submit" disabled={saving}>
+              {saving ? "Saving..." : isEdit ? "Update Bucket" : "Create Bucket"}
+            </PrimaryButton>
+          </div>
         </div>
       </form>
     </Modal>
@@ -594,21 +888,14 @@ const StorageBucketsPage = () => {
     {
       key: "storage_type",
       label: "Type",
-      render: (b) => {
-        const typeMap: Record<string, { label: string; color: string }> = {
-          azure: { label: "Azure Blob",  color: "bg-blue-50 text-blue-700 border-blue-200" },
-          s3:    { label: "Amazon S3",   color: "bg-orange-50 text-orange-700 border-orange-200" },
-          gcp:   { label: "GCS",         color: "bg-green-50 text-green-700 border-green-200" },
-          local: { label: "Local FS",    color: "bg-gray-100 text-gray-700 border-gray-200" },
-        };
-        const t = typeMap[b.storage_type] ?? { label: b.storage_type, color: "bg-gray-100 text-gray-700 border-gray-200" };
-        return (
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${t.color}`}>
-            <Database className="w-3 h-3" />
-            {t.label}
-          </span>
-        );
-      },
+      render: (b) => (
+        <span
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${getStorageTypeBadgeClass(b.storage_type)}`}
+        >
+          <Database className="w-3 h-3" />
+          {getStorageTypeShortLabel(b.storage_type)}
+        </span>
+      ),
     },
     {
       key: "azure_account",
@@ -635,6 +922,19 @@ const StorageBucketsPage = () => {
             <div className="text-sm">
               <p className="font-mono text-gray-800">{b.gcs_bucket}</p>
               <p className="text-xs text-gray-500 font-mono">{b.gcs_project_id}</p>
+            </div>
+          );
+        }
+        if (b.storage_type === "e2e") {
+          return (
+            <div className="text-sm">
+              <p className="font-mono text-gray-800">{b.e2e_bucket}</p>
+              <p
+                className="text-xs text-gray-500 font-mono truncate max-w-[200px]"
+                title={b.e2e_endpoint}
+              >
+                {b.e2e_endpoint?.replace(/^https?:\/\//, "")}
+              </p>
             </div>
           );
         }

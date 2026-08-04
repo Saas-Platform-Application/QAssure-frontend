@@ -14,6 +14,10 @@ import {
   storageBucketService,
   type StorageBucket,
 } from "@/services/storage-bucket-service";
+import {
+  getStorageTypeBadgeClass,
+  getStorageTypeLabel,
+} from "@/constants/storage";
 import { showToast } from "@/utils/toast";
 
 interface StorageBucketDetailProps {
@@ -21,6 +25,61 @@ interface StorageBucketDetailProps {
   onBack: () => void;
   onRefreshList: () => void;
 }
+
+interface ConnectionParam {
+  label: string;
+  value: string;
+  /** Masked secrets render greyed out and are not selectable. */
+  masked?: boolean;
+}
+
+/**
+ * Describe a bucket's provider-specific connection settings for display.
+ * Secrets are already masked by the API — this never sees a plaintext value.
+ */
+const buildConnectionParams = (bucket: StorageBucket): ConnectionParam[] => {
+  const params: ConnectionParam[] = [];
+  const push = (label: string, value?: string | null, masked = false) => {
+    if (value) params.push({ label, value, masked });
+  };
+
+  switch (bucket.storage_type) {
+    case "azure":
+      push("Storage Account", bucket.azure_account);
+      push("Container Name", bucket.azure_container);
+      push("Container URL", bucket.azure_url);
+      push("SAS Token (Masked)", bucket.azure_sas_token_masked, true);
+      break;
+    case "s3":
+      push("Bucket Name", bucket.s3_bucket);
+      push("AWS Region", bucket.s3_region);
+      push("Access Key ID", bucket.s3_access_key_id);
+      push("Secret Access Key (Masked)", bucket.s3_secret_access_key_masked, true);
+      break;
+    case "gcp":
+      push("GCS Bucket Name", bucket.gcs_bucket);
+      push("GCP Project ID", bucket.gcs_project_id);
+      push("Service Account Key (Masked)", bucket.gcs_service_account_key_masked, true);
+      break;
+    case "e2e":
+      push("Bucket Name", bucket.e2e_bucket);
+      push("S3 Endpoint", bucket.e2e_endpoint);
+      push("Signing Region", bucket.e2e_region);
+      push("Access Key", bucket.e2e_access_key);
+      push("Secret Key (Masked)", bucket.e2e_secret_key_masked, true);
+      push(
+        "Addressing Style",
+        bucket.e2e_force_path_style === false
+          ? "DNS-style (bucket.endpoint/key)"
+          : "Path-style (endpoint/bucket/key)",
+      );
+      break;
+    default:
+      break;
+  }
+
+  return params;
+};
 
 export const StorageBucketDetail = ({
   bucketId,
@@ -108,6 +167,8 @@ export const StorageBucketDetail = ({
     );
   }
 
+  const connectionParams = buildConnectionParams(bucket);
+
   return (
     <Layout
       currentPage="Settings"
@@ -145,9 +206,11 @@ export const StorageBucketDetail = ({
                 </div>
                 <div>
                   <span className="text-gray-500 block text-xs uppercase tracking-wider font-semibold">Storage Type</span>
-                  <span className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  <span
+                    className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStorageTypeBadgeClass(bucket.storage_type)}`}
+                  >
                     <Database className="w-3.5 h-3.5" />
-                    {bucket.storage_type === "azure" ? "Azure Blob Storage" : "Local Filesystem"}
+                    {getStorageTypeLabel(bucket.storage_type)}
                   </span>
                 </div>
                 {bucket.description && (
@@ -173,49 +236,30 @@ export const StorageBucketDetail = ({
               </div>
             </div>
 
-            {/* Azure Params */}
-            {bucket.storage_type === "azure" && (
+            {/* Provider connection parameters */}
+            {connectionParams.length > 0 && (
               <div>
                 <h3 className="text-base font-semibold text-gray-900 border-b border-gray-150 pb-3 mb-4">
-                  Azure Connection Parameters
+                  {getStorageTypeLabel(bucket.storage_type)} Connection Parameters
                 </h3>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 space-y-4 font-mono text-xs text-gray-800">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
+                  {connectionParams.map((param) => (
+                    <div key={param.label}>
                       <span className="text-gray-500 block font-sans text-xs uppercase tracking-wider font-semibold mb-1">
-                        Storage Account
+                        {param.label}
                       </span>
-                      <span className="bg-white border border-gray-200 px-3 py-1.5 rounded block truncate select-all font-semibold">
-                        {bucket.azure_account}
+                      <span
+                        className={
+                          param.masked
+                            ? "bg-white border border-gray-200 px-3 py-1.5 rounded block font-mono text-gray-400 select-none"
+                            : "bg-white border border-gray-200 px-3 py-1.5 rounded block truncate select-all font-semibold"
+                        }
+                        title={param.masked ? undefined : param.value}
+                      >
+                        {param.value}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-gray-500 block font-sans text-xs uppercase tracking-wider font-semibold mb-1">
-                        Container Name
-                      </span>
-                      <span className="bg-white border border-gray-200 px-3 py-1.5 rounded block truncate select-all font-semibold">
-                        {bucket.azure_container}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block font-sans text-xs uppercase tracking-wider font-semibold mb-1">
-                      Container URL
-                    </span>
-                    <span className="bg-white border border-gray-200 px-3 py-1.5 rounded block truncate select-all">
-                      {bucket.azure_url}
-                    </span>
-                  </div>
-                  {bucket.azure_sas_token_masked && (
-                    <div>
-                      <span className="text-gray-500 block font-sans text-xs uppercase tracking-wider font-semibold mb-1">
-                        SAS Token (Masked)
-                      </span>
-                      <span className="bg-white border border-gray-200 px-3 py-1.5 rounded block font-mono text-gray-400 select-none">
-                        {bucket.azure_sas_token_masked}
-                      </span>
-                    </div>
-                  )}
+                  ))}
                 </div>
               </div>
             )}
