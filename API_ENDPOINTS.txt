@@ -1,0 +1,663 @@
+================================================================================
+QAssure Frontend - API Endpoints Documentation
+================================================================================
+Base URL: {{baseUrl}}/api/v1 (configured via VITE_API_BASE_URL environment variable)
+All requests include Authorization header: Bearer {accessToken} (automatically added)
+
+================================================================================
+1. AUTHENTICATION APIs
+================================================================================
+
+1.1 Login
+Method: POST
+Endpoint: /auth/login
+Headers: Content-Type: application/json
+Request Body:
+{
+  "email": "string",
+  "password": "string"
+}
+Response: {
+  "success": true,
+  "data": {
+    "user": {
+      "id": "string",
+      "email": "string",
+      "first_name": "string",
+      "last_name": "string"
+    },
+    "tenant_id": "string",
+    "roles": ["string"],
+    "access_token": "string",
+    "refresh_token": "string",
+    "token_type": "string",
+    "expires_in": number,
+    "expires_at": "string"
+  }
+}
+
+1.2 Logout
+Method: POST
+Endpoint: /auth/logout
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body: {}
+Response: {
+  "success": true,
+  "message": "string" (optional)
+}
+
+================================================================================
+2. TENANTS APIs
+================================================================================
+
+2.1 Get All Tenants
+Method: GET
+Endpoint: /tenants
+Query Parameters:
+  - page: number (default: 1)
+  - limit: number (default: 20)
+  - status: string (optional) - Filter by status: "active", "suspended", "deleted"
+  - orderBy[]: string[] (optional) - Array format: ["field", "asc"] or ["field", "desc"]
+    Example: orderBy[]=name&orderBy[]=asc
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": [
+    {
+      "id": "string",
+      "name": "string",
+      "slug": "string",
+      "status": "active" | "suspended" | "deleted",
+      "settings": object | null,
+      "subscription_tier": "string" | null,
+      "max_users": number | null,
+      "max_modules": number | null,
+      "created_at": "string",
+      "updated_at": "string"
+    }
+  ],
+  "pagination": {
+    "page": number,
+    "limit": number,
+    "total": number,
+    "totalPages": number,
+    "hasMore": boolean
+  }
+}
+
+2.2 Get Tenant by ID
+Method: GET
+Endpoint: /tenants/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "name": "string",
+    "slug": "string",
+    "status": "active" | "suspended" | "deleted",
+    "settings": object | null,
+    "subscription_tier": "string" | null,
+    "max_users": number | null,
+    "max_modules": number | null,
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+2.3 Create Tenant
+Method: POST
+Endpoint: /tenants
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body:
+{
+  "name": "string",                    // Required, min 3, max 100 characters
+  "slug": "string",                     // Required, min 3, max 100 characters, regex: ^[a-z0-9-]+$
+  "status": "active" | "suspended" | "deleted",  // Required
+  "settings": object | null,            // Optional
+  "subscription_tier": "string" | null, // Optional, max 50 characters
+  "max_users": number | null,          // Optional, min 1
+  "max_modules": number | null          // Optional, min 1
+}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "name": "string",
+    "slug": "string",
+    "status": "active" | "suspended" | "deleted",
+    "settings": object | null,
+    "subscription_tier": "string" | null,
+    "max_users": number | null,
+    "max_modules": number | null,
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+2.4 Update Tenant
+Method: PUT
+Endpoint: /tenants/{id}
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body:
+{
+  "name": "string",                    // Required, min 3, max 100 characters
+  "slug": "string",                     // Required, min 3, max 100 characters, regex: ^[a-z0-9-]+$
+  "status": "active" | "suspended" | "deleted",  // Required
+  "settings": object | null,            // Optional
+  "subscription_tier": "string" | null, // Optional, max 50 characters
+  "max_users": number | null,          // Optional, min 1
+  "max_modules": number | null          // Optional, min 1
+}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "name": "string",
+    "slug": "string",
+    "status": "active" | "suspended" | "deleted",
+    "settings": object | null,
+    "subscription_tier": "string" | null,
+    "max_users": number | null,
+    "max_modules": number | null,
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+2.5 Delete Tenant
+Method: DELETE
+Endpoint: /tenants/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "message": "string" (optional)
+}
+
+================================================================================
+3. USERS APIs
+================================================================================
+
+3.1 Get All Users
+Method: GET
+Endpoint: /users
+Query Parameters:
+  - page: number (default: 1)
+  - limit: number (default: 20)
+  - status: string (optional) - Filter by status: "active", "suspended", "deleted"
+  - orderBy[]: string[] (optional) - Array format: ["field", "asc"] or ["field", "desc"]
+    Example: orderBy[]=email&orderBy[]=asc
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": [
+    {
+      "id": "string",
+      "email": "string",
+      "first_name": "string",
+      "last_name": "string",
+      "status": "active" | "suspended" | "deleted",
+      "auth_provider": "string",
+      "tenant_id": "string" | null,
+      "role_id": "string" | null,
+      "created_at": "string",
+      "updated_at": "string"
+    }
+  ],
+  "pagination": {
+    "page": number,
+    "limit": number,
+    "total": number,
+    "totalPages": number,
+    "hasMore": boolean
+  }
+}
+
+3.2 Get User by ID
+Method: GET
+Endpoint: /users/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "email": "string",
+    "first_name": "string",
+    "last_name": "string",
+    "status": "active" | "suspended" | "deleted",
+    "auth_provider": "string",
+    "tenant_id": "string" | null,
+    "role_id": "string" | null,
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+3.3 Create User
+Method: POST
+Endpoint: /users
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body:
+{
+  "email": "string",                    // Required, valid email format
+  "password": "string",                 // Required, min 6 characters
+  "first_name": "string",               // Required
+  "last_name": "string",                // Required
+  "status": "active" | "suspended" | "deleted",  // Required
+  "auth_provider": "local",             // Required
+  "tenant_id": "string",                // Required
+  "role_id": "string"                   // Required
+}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "email": "string",
+    "first_name": "string",
+    "last_name": "string",
+    "status": "active" | "suspended" | "deleted",
+    "auth_provider": "string",
+    "tenant_id": "string" | null,
+    "role_id": "string" | null,
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+3.4 Update User
+Method: PUT
+Endpoint: /users/{id}
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body:
+{
+  "email": "string",                    // Required, valid email format
+  "first_name": "string",               // Required
+  "last_name": "string",                // Required
+  "status": "active" | "suspended" | "deleted",  // Required
+  "auth_provider": "string",             // Optional
+  "tenant_id": "string",                // Required
+  "role_id": "string"                   // Required
+}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "email": "string",
+    "first_name": "string",
+    "last_name": "string",
+    "status": "active" | "suspended" | "deleted",
+    "auth_provider": "string",
+    "tenant_id": "string" | null,
+    "role_id": "string" | null,
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+3.5 Delete User
+Method: DELETE
+Endpoint: /users/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "message": "string" (optional)
+}
+
+================================================================================
+4. ROLES APIs
+================================================================================
+
+4.1 Get All Roles
+Method: GET
+Endpoint: /roles
+Query Parameters:
+  - page: number (default: 1)
+  - limit: number (default: 20)
+  - scope: string (optional) - Filter by scope: "platform", "tenant", "module"
+  - orderBy[]: string[] (optional) - Array format: ["field", "asc"] or ["field", "desc"]
+    Example: orderBy[]=name&orderBy[]=asc
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": [
+    {
+      "id": "string",
+      "name": "string",
+      "code": "string",
+      "description": "string" | null,
+      "scope": "platform" | "tenant" | "module",
+      "created_at": "string",
+      "updated_at": "string"
+    }
+  ],
+  "pagination": {
+    "page": number,
+    "limit": number,
+    "total": number,
+    "totalPages": number,
+    "hasMore": boolean
+  }
+}
+
+4.2 Get Role by ID
+Method: GET
+Endpoint: /roles/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "name": "string",
+    "code": "string",
+    "description": "string" | null,
+    "scope": "platform" | "tenant" | "module",
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+4.3 Create Role
+Method: POST
+Endpoint: /roles
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body:
+{
+  "name": "string",                     // Required
+  "code": "super_admin" | "tenant_admin" | "quality_manager" | "developer" | "viewer",  // Required, enum
+  "description": "string",              // Required
+  "scope": "platform" | "tenant" | "module"  // Required, enum
+}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "name": "string",
+    "code": "string",
+    "description": "string" | null,
+    "scope": "platform" | "tenant" | "module",
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+4.4 Update Role
+Method: PUT
+Endpoint: /roles/{id}
+Headers: 
+  - Content-Type: application/json
+  - Authorization: Bearer {accessToken}
+Request Body:
+{
+  "name": "string",                     // Required
+  "code": "super_admin" | "tenant_admin" | "quality_manager" | "developer" | "viewer",  // Required, enum
+  "description": "string",              // Required
+  "scope": "platform" | "tenant" | "module"  // Required, enum
+}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "name": "string",
+    "code": "string",
+    "description": "string" | null,
+    "scope": "platform" | "tenant" | "module",
+    "created_at": "string",
+    "updated_at": "string"
+  }
+}
+
+4.5 Delete Role
+Method: DELETE
+Endpoint: /roles/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "message": "string" (optional)
+}
+
+================================================================================
+5. MODULES APIs
+================================================================================
+
+5.1 Get All Modules
+Method: GET
+Endpoint: /modules
+Query Parameters:
+  - page: number (default: 1)
+  - limit: number (default: 20)
+  - status: string (optional) - Filter by status: "running", "stopped", "failed", etc.
+  - orderBy[]: string[] (optional) - Array format: ["field", "asc"] or ["field", "desc"]
+    Example: orderBy[]=name&orderBy[]=asc
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": [
+    {
+      "id": "string",
+      "module_id": "string",
+      "name": "string",
+      "description": "string",
+      "version": "string",
+      "status": "string",
+      "runtime_language": "string" | null,
+      "framework": "string" | null,
+      "base_url": "string",
+      "health_endpoint": "string",
+      "endpoints": ["string"] | null,
+      "kafka_topics": ["string"] | null,
+      "cpu_request": "string",
+      "cpu_limit": "string",
+      "memory_request": "string",
+      "memory_limit": "string",
+      "min_replicas": number,
+      "max_replicas": number,
+      "last_health_check": "string" | null,
+      "health_status": "string" | null,
+      "consecutive_failures": number | null,
+      "registered_by": "string",
+      "tenant_id": "string",
+      "metadata": object | null,
+      "created_at": "string",
+      "updated_at": "string",
+      "registered_by_email": "string"
+    }
+  ],
+  "pagination": {
+    "page": number,
+    "limit": number,
+    "total": number,
+    "totalPages": number,
+    "hasMore": boolean
+  }
+}
+
+5.2 Get Module by ID
+Method: GET
+Endpoint: /modules/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "module_id": "string",
+    "name": "string",
+    "description": "string",
+    "version": "string",
+    "status": "string",
+    "runtime_language": "string" | null,
+    "framework": "string" | null,
+    "base_url": "string",
+    "health_endpoint": "string",
+    "endpoints": ["string"] | null,
+    "kafka_topics": ["string"] | null,
+    "cpu_request": "string",
+    "cpu_limit": "string",
+    "memory_request": "string",
+    "memory_limit": "string",
+    "min_replicas": number,
+    "max_replicas": number,
+    "last_health_check": "string" | null,
+    "health_status": "string" | null,
+    "consecutive_failures": number | null,
+    "registered_by": "string",
+    "tenant_id": "string",
+    "metadata": object | null,
+    "created_at": "string",
+    "updated_at": "string",
+    "registered_by_email": "string"
+  }
+}
+
+================================================================================
+6. AUDIT LOGS APIs
+================================================================================
+
+6.1 Get All Audit Logs
+Method: GET
+Endpoint: /audit-logs
+Query Parameters:
+  - page: number (default: 1)
+  - limit: number (default: 20)
+  - method: string (optional) - Filter by HTTP method: "GET", "POST", "PUT", "DELETE", "PATCH"
+  - orderBy[]: string[] (optional) - Array format: ["field", "asc"] or ["field", "desc"]
+    Example: orderBy[]=created_at&orderBy[]=desc
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": [
+    {
+      "id": "string",
+      "tenant_id": "string" | null,
+      "user_id": "string" | null,
+      "action": "string",
+      "resource_type": "string",
+      "resource_id": "string" | null,
+      "request_method": "string" | null,
+      "request_path": "string" | null,
+      "request_body": object | null,
+      "response_status": number | null,
+      "response_body": object | null,
+      "ip_address": "string" | null,
+      "user_agent": "string" | null,
+      "correlation_id": "string" | null,
+      "changes": object | null,
+      "metadata": object | null,
+      "created_at": "string",
+      "updated_at": "string",
+      "user": {
+        "id": "string",
+        "email": "string",
+        "first_name": "string",
+        "last_name": "string"
+      } | null,
+      "tenant": {
+        "id": "string",
+        "name": "string"
+      } | null
+    }
+  ],
+  "pagination": {
+    "page": number,
+    "limit": number,
+    "total": number,
+    "totalPages": number,
+    "hasMore": boolean
+  }
+}
+
+6.2 Get Audit Log by ID
+Method: GET
+Endpoint: /audit-logs/{id}
+Headers: Authorization: Bearer {accessToken}
+Response: {
+  "success": true,
+  "data": {
+    "id": "string",
+    "tenant_id": "string" | null,
+    "user_id": "string" | null,
+    "action": "string",
+    "resource_type": "string",
+    "resource_id": "string" | null,
+    "request_method": "string" | null,
+    "request_path": "string" | null,
+    "request_body": object | null,
+    "response_status": number | null,
+    "response_body": object | null,
+    "ip_address": "string" | null,
+    "user_agent": "string" | null,
+    "correlation_id": "string" | null,
+    "changes": object | null,
+    "metadata": object | null,
+    "created_at": "string",
+    "updated_at": "string",
+    "user": {
+      "id": "string",
+      "email": "string",
+      "first_name": "string",
+      "last_name": "string"
+    } | null,
+    "tenant": {
+      "id": "string",
+      "name": "string"
+    } | null
+  }
+}
+
+================================================================================
+NOTES
+================================================================================
+
+1. Authentication:
+   - All API requests (except /auth/login) require Bearer token in Authorization header
+   - Token is automatically added by api-client interceptor from Redux store
+   - On 401 error (except for /auth/login and /auth/logout), user is redirected to login page
+
+2. Query Parameters:
+   - Pagination: page (default: 1), limit (default: 20)
+   - Sorting: orderBy[] format for array parameters (e.g., orderBy[]=name&orderBy[]=asc)
+   - Filtering: status, scope, method (varies by endpoint)
+
+3. Error Responses:
+   - Validation errors: {
+       "success": false,
+       "error": "Validation failed",
+       "details": [
+         {
+           "path": "string",
+           "message": "string",
+           "code": "string"
+         }
+       ]
+     }
+   - General errors: {
+       "success": false,
+       "error": {
+         "code": "string",
+         "message": "string"
+       }
+     }
+
+4. Response Format:
+   - All successful responses include "success": true
+   - Data is wrapped in "data" property
+   - Paginated responses include "pagination" object
+
+5. Base URL:
+   - Configured via VITE_API_BASE_URL environment variable
+   - Default: http://localhost:3000/api/v1
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

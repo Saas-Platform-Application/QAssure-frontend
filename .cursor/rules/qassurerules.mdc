@@ -1,0 +1,320 @@
+---
+alwaysApply: true
+---
+# QAssure.ai Management Console - Development Rules
+
+## Initial Response Protocol
+Let's Start Building Frontend 
+
+## Scope Control & Permission Protocol (CRITICAL)
+
+### Strict Scope Adherence
+1. **ONLY** work on the specific component/feature explicitly requested
+2. **NEVER** create additional components, files, or features without explicit permission
+3. **STOP** after completing the requested task - do not continue or expand scope
+4. **ASK** before doing anything beyond the original instruction
+
+### When to Ask Permission
+You MUST ask for explicit approval before:
+- Creating any file not explicitly requested
+- Adding any dependencies not mentioned in the request
+- Implementing related/adjacent features "to be helpful"
+- Refactoring existing code not part of the request
+- Creating utility functions, hooks, or services beyond scope
+- Setting up folder structures not specifically asked for
+- Adding tests, documentation, or configuration files
+
+### Completion Protocol
+After finishing the requested component/task:
+1. Confirm completion: "✅ [Component Name] has been created"
+2. List what was delivered (files created, dependencies used)
+3. **STOP and WAIT** for next instruction
+5. **DO NOT** ask "Should I create X next?" - wait for explicit request
+
+## Technology Stack (STRICT - No Deviations)
+- **Framework**: React 19.2.0 (Functional Components Only)
+- **Build Tool**: Vite 7.2.4
+- **Language**: TypeScript 5.9.3 (Strict Mode)
+- **Styling**: Tailwind CSS 4.1.18
+- **Routing**: React Router DOM 7.12.0
+- **State Management**: Redux Toolkit 2.11.2
+- **UI Components**: shadcn/ui (Radix UI primitives)
+- **Forms**: React Hook Form 7.71.1
+- **API Client**: Axios 1.13.2
+- **Charts**: Recharts 3.6.0
+- **Icons**: Lucide React 0.562.0
+
+## Dependency Management Rules
+1. **NEVER** install libraries not listed in package.json without explicit approval, Only Install with permission.
+2. Check `package.json` before suggesting any import
+3. Use only existing dependencies; suggest additions only when critical
+4. All imports must use exact package names from package.json
+
+## Figma MCP Automation Workflow
+1. **Design Fetch**: Use Figma MCP to retrieve component designs
+2. **Analysis Phase**: Identify component structure, variants, and responsive breakpoints
+3. **Implementation**: Convert Figma designs to shadcn/ui + Tailwind CSS components
+4. **Validation**: Ensure pixel-perfect accuracy across all breakpoints (320px - 1920px)
+5. **Never** hardcode colors/spacing - extract to Tailwind config or CSS variables
+
+## Code Architecture & File Structure (MANDATORY)
+
+```
+src/
+├── components/ # Reusable UI components
+│ ├── ui/ # shadcn/ui components
+│ └── shared/ # Custom shared components
+├── features/ # Feature-based modules (Dashboard, Modules, AI, etc.)
+│ └── [feature]/
+│ ├── components/ # Feature-specific components
+│ ├── hooks/ # Feature-specific hooks
+│ └── services/ # Feature-specific API calls
+├── hooks/ # Global custom hooks
+├── services/ # API integration layer (Axios instances)
+├── store/ # Redux store, slices, actions
+├── types/ # TypeScript type definitions
+├── utils/ # Utility/helper functions
+├── constants/ # App constants, enums
+├── styles/ # Global styles, Tailwind config
+└── pages/ # Route-level page components
+```
+
+## File Size Constraints (HARD LIMITS)
+- **React Components**: Maximum 500 lines (including imports/exports)
+- **Hooks/Utils/Services**: Maximum 200 lines per file
+- **Types**: Maximum 300 lines per file
+- **Violation Action**: MUST refactor into smaller, focused modules
+
+## Component Development Standards
+
+### Component Structure Template
+```tsx
+// 1. Imports (grouped: React, external, internal, types, styles)
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { useAppSelector } from '@/hooks/redux-hooks';
+import type { ModuleStatus } from '@/types/module';
+
+// 2. Types/Interfaces
+interface ComponentProps {
+title: string;
+onAction: () => void;
+}
+
+// 3. Component (functional, typed props, return type)
+export const ComponentName = ({ title, onAction }: ComponentProps): JSX.Element => {
+// Hooks first
+const [state, setState] = useState<string>('');
+const navigate = useNavigate();
+
+// Event handlers
+const handleClick = () => {
+// Implementation
+};
+
+// Early returns for conditional rendering
+if (!title) return <div>Loading...</div>;
+
+// Main render
+return <div>{/* JSX */}</div>;
+};
+```
+
+### Component Rules
+- **Functional components only** (no class components)
+- **Props destructuring** in function signature
+- **Explicit return types**: `: JSX.Element` or `: React.ReactNode`
+- **Custom hooks** for reusable logic (prefix with `use`)
+- **Compound components** for complex UIs (e.g., `Card.Header`, `Card.Body`)
+
+## Naming Conventions (NON-NEGOTIABLE)
+
+| Element | Convention | Example |
+|---------|-----------|---------|
+| Component | PascalCase | `UserDashboard`, `ModuleCatalog` |
+| Function/Hook | camelCase | `getUserById`, `useModuleStatus` |
+| Variable | camelCase | `moduleList`, `isActive` |
+| Constant | SCREAMING_SNAKE | `API_BASE_URL`, `MAX_RETRIES` |
+| Type/Interface | PascalCase | `ModuleConfig`, `UserRole` |
+| File (Component) | PascalCase | `ModuleCatalog.tsx` |
+| File (Other) | kebab-case | `api-client.ts`, `format-date.ts` |
+| CSS Class | kebab-case | `module-card`, `status-badge` |
+
+### Boolean Naming
+Prefix with `is`, `has`, `can`, `should`: `isLoading`, `hasPermission`, `canEdit`
+
+## Responsive Design (Tailwind Mobile-First)
+
+### Breakpoints (Tailwind 4)
+```
+Default (mobile): 320px - 767px (no prefix)
+md: ≥768px (Tablet)
+lg: ≥1024px (Laptop)
+xl: ≥1440px (Desktop)
+2xl: ≥1920px (Large Display)
+```
+
+### Implementation Rules
+1. **Mobile-first**: Start with mobile layout, enhance with `md:`, `lg:`, `xl:`, `2xl:`
+2. **Touch targets**: Minimum `min-h-[44px] min-w-[44px]` for interactive elements
+3. **Responsive patterns**:
+```tsx
+// Layout
+<div className="flex flex-col md:flex-row lg:gap-6">
+
+// Grid
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+// Typography
+<h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl">
+
+// Spacing
+<div className="p-4 md:p-6 lg:p-8">
+```
+4. **NEVER** use fixed pixel widths; use `w-full`, `max-w-*`, percentage-based utilities
+
+## State Management (Redux Toolkit)
+
+### Slice Structure
+```typescript
+// features/modules/store/moduleSlice.ts
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+
+export const fetchModules = createAsyncThunk('modules/fetch', async () => {
+// API call
+});
+
+const moduleSlice = createSlice({
+name: 'modules',
+initialState: { items: [], loading: false, error: null },
+reducers: { /* sync actions */ },
+extraReducers: (builder) => { /* async actions */ }
+});
+```
+
+### Usage Rules
+- **Async operations**: Use `createAsyncThunk`
+- **Selectors**: Create memoized selectors with `createSelector`
+- **Typed hooks**: Use `useAppDispatch`, `useAppSelector` (typed versions)
+
+## API Communication (Axios)
+
+### Service Layer Pattern
+```typescript
+// services/api/module-service.ts
+import apiClient from '@/services/api-client';
+import type { Module, CreateModuleDto } from '@/types/module';
+
+export const moduleService = {
+getAll: () => apiClient.get<Module[]>('/modules'),
+getById: (id: string) => apiClient.get<Module>(`/modules/${id}`),
+create: (data: CreateModuleDto) => apiClient.post<Module>('/modules', data),
+};
+```
+
+### Rules
+- **Centralized instance**: Single Axios instance with interceptors
+- **Error handling**: Global error interceptor + component-level handling
+- **Type safety**: Always type API responses
+- **Loading states**: Track in Redux or local state
+
+## Form Handling (React Hook Form)
+
+```typescript
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+const schema = z.object({ name: z.string().min(1) });
+
+const MyForm = () => {
+const { register, handleSubmit, formState: { errors } } = useForm({
+resolver: zodResolver(schema)
+});
+
+return <form onSubmit={handleSubmit(onSubmit)}>...</form>;
+};
+```
+
+## Error Handling
+
+### Component Error Boundaries
+```tsx
+// Wrap async components
+<ErrorBoundary fallback={<ErrorFallback />}>
+<SuspendedComponent />
+</ErrorBoundary>
+```
+
+### Try-Catch Pattern
+```typescript
+try {
+await apiCall();
+} catch (error) {
+console.error('Context:', error);
+// User-friendly message
+toast.error('Failed to load data. Please try again.');
+}
+```
+
+## Code Quality Rules
+1. **DRY**: Extract repeated logic into utils/hooks
+2. **SRP**: One purpose per file/component/function
+3. **KISS**: Prefer clarity over cleverness
+4. **Max nesting**: 3 levels; refactor if deeper
+5. **No any**: Use proper TypeScript types
+6. **No inline styles**: Use Tailwind classes only
+
+## Performance Optimization
+- **Code splitting**: Lazy load routes with `React.lazy()`
+- **Memoization**: Use `useMemo`, `useCallback`, `React.memo` appropriately
+- **List virtualization**: Use `react-window` for long lists (>100 items)
+- **Image optimization**: WebP format, lazy loading, responsive images
+
+## Security Guidelines
+- **Never** store tokens in localStorage (use httpOnly cookies)
+- **Validate inputs**: Client-side + server-side validation
+- **Sanitize outputs**: Prevent XSS with proper escaping
+- **CORS**: Configure allowed origins properly
+
+## Prohibited Practices
+1. ❌ Class components
+2. ❌ Inline function definitions in JSX (unless trivial)
+3. ❌ `any` type without explicit justification
+4. ❌ Direct DOM manipulation (use refs sparingly)
+5. ❌ Hardcoded strings (use constants/i18n)
+6. ❌ Magic numbers (define as constants)
+7. ❌ Unused imports/variables
+8. ❌ Console.log in production code (use proper logging)
+9. ❌ **Creating components/files beyond the specific request**
+10. ❌ **Expanding scope without explicit permission**
+11. ❌ **Installing dependencies without asking first**
+
+## Documentation Policy
+**DO NOT** create documentation (README, API docs, guides) unless explicitly requested.
+Focus solely on code implementation following these rules.
+
+## Code Review Checklist (Self-Audit)
+- [ ] Follows file structure and naming conventions?
+- [ ] Within file size limits?
+- [ ] Fully responsive (320px - 1920px)?
+- [ ] Proper TypeScript typing (no `any`)?
+- [ ] Error handling implemented?
+- [ ] No code duplication?
+- [ ] Accessible (ARIA labels, keyboard navigation)?
+- [ ] Performance optimized (memoization, lazy loading)?
+
+## Specific Instructions
+1. When fetching Figma designs, analyze component hierarchy first
+2. Generate TypeScript interfaces from Figma component properties
+3. Map Figma styles to Tailwind classes (use closest utility)
+4. Create responsive variants based on Figma frames
+5. Suggest shadcn/ui components that match design patterns
+6. Always ask for clarification if Figma design is ambiguous
+7. Provide component usage examples after generation
+8. **CRITICAL**: Ask permission before installing any new dependencies or shadcn components
+9. **CRITICAL**: If you identify missing utilities/types needed, ASK before creating them
+
+---
+
