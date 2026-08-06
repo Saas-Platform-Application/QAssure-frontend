@@ -4,13 +4,14 @@
  */
 
 import apiClient from './api-client';
+import type { StorageType } from '@/constants/storage';
 
 export interface StorageBucket {
   id: string;
   name: string;
   description?: string;
   owner_tenant_id: string;
-  storage_type: 'azure' | 'local' | 's3' | 'gcp';
+  storage_type: StorageType;
   // Azure Blob Storage
   azure_account?: string;
   azure_container?: string;
@@ -25,6 +26,13 @@ export interface StorageBucket {
   gcs_bucket?: string;
   gcs_project_id?: string;
   gcs_service_account_key_masked?: string;
+  // E2E Networks Object Storage (EOS / Vyoma) — S3-compatible
+  e2e_bucket?: string;
+  e2e_endpoint?: string;
+  e2e_region?: string;
+  e2e_access_key?: string;
+  e2e_secret_key_masked?: string;
+  e2e_force_path_style?: boolean;
   // Common
   is_active: boolean;
   assigned_tenants_count?: number;
@@ -57,7 +65,7 @@ export interface BucketAssignment {
 export interface CreateBucketPayload {
   name: string;
   description?: string;
-  storage_type: 'azure' | 'local' | 's3' | 'gcp';
+  storage_type: StorageType;
   // Azure
   azure_account?: string;
   azure_container?: string;
@@ -72,10 +80,24 @@ export interface CreateBucketPayload {
   gcs_bucket?: string;
   gcs_project_id?: string;
   gcs_service_account_key?: string;
+  // E2E Networks Object Storage (EOS)
+  e2e_bucket?: string;
+  e2e_endpoint?: string;
+  e2e_region?: string;
+  e2e_access_key?: string;
+  e2e_secret_key?: string;
+  e2e_force_path_style?: boolean;
 }
 
 export interface UpdateBucketPayload extends Partial<CreateBucketPayload> {
   is_active?: boolean;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  storage_type: StorageType;
+  /** Human-readable description of what was reached, e.g. "https://…/my-bucket" */
+  target: string;
 }
 
 export const storageBucketService = {
@@ -106,6 +128,27 @@ export const storageBucketService = {
   /** Soft-delete a bucket */
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/storage-buckets/${id}`);
+  },
+
+  /**
+   * Probe an unsaved bucket config before creating it — verifies the
+   * credentials and endpoint actually reach the bucket.
+   */
+  testConnection: async (payload: CreateBucketPayload): Promise<TestConnectionResult> => {
+    const res = await apiClient.post('/storage-buckets/test-connection', payload);
+    return res.data.data;
+  },
+
+  /**
+   * Probe a saved bucket config. Field overrides are optional — omitted
+   * secrets fall back to the stored (encrypted) values.
+   */
+  testSavedConnection: async (
+    id: string,
+    overrides: UpdateBucketPayload = {},
+  ): Promise<TestConnectionResult> => {
+    const res = await apiClient.post(`/storage-buckets/${id}/test-connection`, overrides);
+    return res.data.data;
   },
 
   /** Assign a bucket to a specific tenant (superadmin action) */

@@ -14,8 +14,65 @@ import {
   Container,
   Globe,
   RefreshCw,
+  KeyRound,
+  MapPin,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  getStorageTypeBadgeClass,
+  getStorageTypeLabel,
+} from "@/constants/storage";
 import { showToast } from "@/utils/toast";
+
+interface BucketRow {
+  label: string;
+  value?: string;
+  icon?: LucideIcon;
+  /** Secrets render greyed out with a "stored securely" note. */
+  secret?: boolean;
+}
+
+/**
+ * Read-only summary of the tenant's assigned bucket. Values come from the API
+ * already masked, so no secret is ever available to render here.
+ */
+const buildBucketRows = (bucket: StorageBucket): BucketRow[] => {
+  const rows: BucketRow[] = [];
+  const push = (row: BucketRow) => {
+    if (row.value || row.secret) rows.push(row);
+  };
+
+  switch (bucket.storage_type) {
+    case "azure":
+      push({ label: "Storage Account", value: bucket.azure_account, icon: Server });
+      push({ label: "Container", value: bucket.azure_container, icon: Container });
+      push({ label: "Endpoint URL", value: bucket.azure_url, icon: Globe });
+      push({ label: "SAS Token", value: bucket.azure_sas_token_masked, secret: true });
+      break;
+    case "s3":
+      push({ label: "Bucket", value: bucket.s3_bucket, icon: Container });
+      push({ label: "Region", value: bucket.s3_region, icon: MapPin });
+      push({ label: "Access Key ID", value: bucket.s3_access_key_id, icon: KeyRound });
+      push({ label: "Secret Access Key", value: bucket.s3_secret_access_key_masked, secret: true });
+      break;
+    case "gcp":
+      push({ label: "Bucket", value: bucket.gcs_bucket, icon: Container });
+      push({ label: "Project ID", value: bucket.gcs_project_id, icon: Server });
+      push({ label: "Service Account Key", value: bucket.gcs_service_account_key_masked, secret: true });
+      break;
+    case "e2e":
+      push({ label: "Bucket", value: bucket.e2e_bucket, icon: Container });
+      push({ label: "S3 Endpoint", value: bucket.e2e_endpoint, icon: Globe });
+      push({ label: "Signing Region", value: bucket.e2e_region, icon: MapPin });
+      push({ label: "Access Key", value: bucket.e2e_access_key, icon: KeyRound });
+      push({ label: "Secret Key", value: bucket.e2e_secret_key_masked, secret: true });
+      break;
+    default:
+      break;
+  }
+
+  return rows;
+};
 
 const StorageConfigPage = () => {
   const tenantId = useAppSelector((state) => state.auth.tenantId);
@@ -86,67 +143,51 @@ const StorageConfigPage = () => {
                   </p>
                 )}
               </div>
-              <span className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span
+                className={`ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${getStorageTypeBadgeClass(bucket.storage_type)}`}
+              >
                 <Database className="w-3 h-3" />
-                {bucket.storage_type === "azure"
-                  ? "Azure Blob Storage"
-                  : "Local Filesystem"}
+                {getStorageTypeLabel(bucket.storage_type)}
               </span>
             </div>
 
-            {bucket.storage_type === "azure" && (
-              <div className="divide-y divide-gray-100">
-                <div className="flex items-center gap-3 px-6 py-4">
-                  <Server className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">
-                      Storage Account
-                    </p>
-                    <p className="font-mono text-sm text-gray-900">
-                      {bucket.azure_account}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 px-6 py-4">
-                  <Container className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Container</p>
-                    <p className="font-mono text-sm text-gray-900">
-                      {bucket.azure_container}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 px-6 py-4">
-                  <Globe className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Endpoint URL</p>
-                    <p className="font-mono text-xs text-gray-700 break-all">
-                      {bucket.azure_url}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 px-6 py-4 bg-gray-50">
-                  <div className="w-4 h-4 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">SAS Token</p>
-                    <p className="font-mono text-sm text-gray-400">
-                      {bucket.azure_sas_token_masked || "••••••••••••••••"}
-                      <span className="ml-2 text-xs text-gray-400 font-sans">
-                        (stored securely — not visible)
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {bucket.storage_type === "local" && (
+            {bucket.storage_type === "local" ? (
               <div className="px-6 py-5 text-sm text-gray-600">
                 Files are stored on the local server filesystem. Contact your
                 administrator for path details.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {buildBucketRows(bucket).map((row) => {
+                  const Icon = row.icon;
+                  return (
+                    <div
+                      key={row.label}
+                      className={`flex items-center gap-3 px-6 py-4 ${row.secret ? "bg-gray-50" : ""}`}
+                    >
+                      {Icon ? (
+                        <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 flex-shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500 mb-0.5">{row.label}</p>
+                        {row.secret ? (
+                          <p className="font-mono text-sm text-gray-400">
+                            {row.value || "••••••••••••••••"}
+                            <span className="ml-2 text-xs text-gray-400 font-sans">
+                              (stored securely — not visible)
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="font-mono text-sm text-gray-900 break-all">
+                            {row.value}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
